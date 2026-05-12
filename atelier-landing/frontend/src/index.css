@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .bg-dot-pattern {
+    background-image: radial-gradient(circle, #cbd5e1 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  @apply text-slate-800 bg-white;
+}
+
+/* Hide default browser eye icon for password fields (e.g. Edge) */
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+}

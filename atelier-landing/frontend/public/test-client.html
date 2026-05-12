@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Test Socket Client (Sakshi)</title>
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+  <h1>Test Socket Client</h1>
+  <div id="status">Starting...</div>
+  <pre id="log" style="background: #f4f4f4; padding: 10px; border: 1px solid #ddd; max-height: 400px; overflow-y: auto;"></pre>
+
+  <script>
+    const logEl = document.getElementById('log');
+    const statusEl = document.getElementById('status');
+    const log = (msg) => {
+      console.log(msg);
+      logEl.innerHTML += msg + '\n';
+      logEl.scrollTop = logEl.scrollHeight;
+    };
+
+    async function start() {
+      try {
+        log('Logging in as Sakshi...');
+        const res = await fetch('http://localhost:5000/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: 'sgoenka522@gmail.com', password: 'sakshi2003@@' })
+        });
+        const data = await res.json();
+        
+        if (!data.token) {
+          log('Login failed: ' + JSON.stringify(data));
+          statusEl.innerText = 'Login Failed';
+          return;
+        }
+        
+        log('Login successful! Token acquired.');
+        
+        const socket = io('http://localhost:5000', {
+          auth: { token: data.token }
+        });
+
+        socket.on('connect', () => {
+          log('Socket connected! ID: ' + socket.id);
+          statusEl.innerText = 'Connected';
+          
+          // Poll for room from localStorage that Aditya sets
+          const checkRoom = setInterval(() => {
+            const hash = window.location.hash.replace('#', '');
+            if (hash) {
+              clearInterval(checkRoom);
+              log('Joining room: ' + hash);
+              socket.emit('room:join', hash);
+            } else {
+               log('Waiting for room hash in URL (e.g. test-client.html#ROOMCODE)...');
+            }
+          }, 2000);
+        });
+
+        socket.on('initial:state', (state) => {
+          log('RECEIVED initial:state - elements: ' + state.elements.length);
+        });
+
+        socket.on('board:update', (update) => {
+          log('RECEIVED board:update from ' + update.userId + ' - elements: ' + update.elements.length + ', version: ' + update.version);
+        });
+
+        socket.on('pointer:update', (update) => {
+          log('RECEIVED pointer:update from ' + update.userId);
+        });
+      } catch (e) {
+        log('Error: ' + e.message);
+      }
+    }
+
+    start();
+  </script>
+</body>
+</html>
