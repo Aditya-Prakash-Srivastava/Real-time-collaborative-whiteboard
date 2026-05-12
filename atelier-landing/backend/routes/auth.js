@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { Resend } = require('resend');
+
 const { z } = require('zod');
 const User = require('../models/User');
 const OTP = require('../models/OTP');
@@ -22,8 +22,29 @@ const passwordSchema = z.object({
   newPassword: z.string().min(6, 'New password must be at least 6 characters')
 });
 
-// Configure Resend client
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Helper to send emails via Brevo HTTP API
+const sendBrevoEmail = async (toEmail, subject, htmlContent) => {
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'accept': 'application/json',
+      'api-key': process.env.BREVO_API_KEY,
+      'content-type': 'application/json'
+    },
+    body: JSON.stringify({
+      sender: { email: process.env.EMAIL_USER || 'whiteboardproject777@gmail.com', name: 'Whiteboard App' },
+      to: [{ email: toEmail }],
+      subject: subject,
+      htmlContent: htmlContent
+    })
+  });
+  
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(JSON.stringify(errorData));
+  }
+  return response.json();
+};
 
 // 1. Send OTP Route
 router.post('/send-otp', async (req, res) => {
@@ -50,18 +71,12 @@ router.post('/send-otp', async (req, res) => {
     const newOtp = new OTP({ email, otp: otpCode });
     await newOtp.save();
 
-    // Send email via Resend
-    const mailOptions = {
-      from: 'Whiteboard <onboarding@resend.dev>',
-      to: [email],
-      subject: 'Your Whiteboard Signup OTP',
-      html: `<h2>Welcome to Whiteboard!</h2><p>Your OTP for signup is: <strong>${otpCode}</strong></p><p>This code will expire in 5 minutes.</p>`,
-    };
-
-    // We wrap this in a try-catch to provide a helpful error if email creds are missing
     try {
-      const { data, error } = await resend.emails.send(mailOptions);
-      if (error) throw error;
+      await sendBrevoEmail(
+        email, 
+        'Your Whiteboard Signup OTP', 
+        `<h2>Welcome to Whiteboard!</h2><p>Your OTP for signup is: <strong>${otpCode}</strong></p><p>This code will expire in 5 minutes.</p>`
+      );
       console.log(`OTP sent to ${email}: ${otpCode}`);
       res.status(200).json({ message: 'OTP sent successfully' });
     } catch (emailError) {
@@ -306,17 +321,12 @@ router.post('/reset-password/send-otp', async (req, res) => {
     const newOtp = new OTP({ email, otp: otpCode });
     await newOtp.save();
 
-    // Send email via Resend
-    const mailOptions = {
-      from: 'Whiteboard <onboarding@resend.dev>',
-      to: [email],
-      subject: 'Your Whiteboard Password Reset OTP',
-      html: `<h2>Password Reset</h2><p>Your OTP for password reset is: <strong>${otpCode}</strong></p><p>This code will expire in 5 minutes.</p>`,
-    };
-
     try {
-      const { data, error } = await resend.emails.send(mailOptions);
-      if (error) throw error;
+      await sendBrevoEmail(
+        email, 
+        'Your Whiteboard Password Reset OTP', 
+        `<h2>Password Reset</h2><p>Your OTP for password reset is: <strong>${otpCode}</strong></p><p>This code will expire in 5 minutes.</p>`
+      );
       console.log(`[Reset] OTP sent to ${email}: ${otpCode}`);
       res.status(200).json({ message: 'OTP sent successfully' });
     } catch (emailError) {
