@@ -37,7 +37,7 @@ const Signup = () => {
         if (!res.ok) throw new Error(data.error || 'Google signup failed');
 
         localStorage.setItem('token', data.token);
-        setSuccess('Account created with Google!');
+        setSuccess('signing in...');
         setTimeout(() => {
           const searchParams = new URLSearchParams(window.location.search);
           const room = searchParams.get('room');
@@ -56,7 +56,7 @@ const Signup = () => {
     e.preventDefault();
     setError('');
     if (!email) return setError('Email is required');
-    
+
     setLoading(true);
     try {
       const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/send-otp`, {
@@ -65,9 +65,9 @@ const Signup = () => {
         body: JSON.stringify({ email })
       });
       const data = await res.json();
-      
+
       if (!res.ok) throw new Error(data.error || 'Failed to send OTP');
-      
+
       setSuccess('OTP sent to your email!');
       setStep(2);
     } catch (err) {
@@ -91,9 +91,9 @@ const Signup = () => {
         body: JSON.stringify({ email, otp })
       });
       const data = await res.json();
-      
+
       if (!res.ok) throw new Error(data.error || 'Invalid OTP');
-      
+
       setSuccess('Email verified! Please create a password.');
       setStep(3);
     } catch (err) {
@@ -117,13 +117,13 @@ const Signup = () => {
         body: JSON.stringify({ email, password })
       });
       const data = await res.json();
-      
+
       if (!res.ok) throw new Error(data.error || 'Failed to create account');
-      
+
       setSuccess('Account created successfully!');
       // Store JWT token
       localStorage.setItem('token', data.token);
-      
+
       // Redirect or update app state here
       setTimeout(() => {
         const searchParams = new URLSearchParams(window.location.search);
@@ -161,7 +161,7 @@ const Signup = () => {
         {success && <div className="mb-4 p-3 bg-green-50 text-green-600 text-sm rounded-md border border-green-100">{success}</div>}
 
         <form className="space-y-5" onSubmit={step === 1 ? handleSendOtp : step === 2 ? handleVerifyOtp : handleSignup}>
-          
+
           {/* STEP 1: EMAIL */}
           <div className="space-y-1.5">
             <label className="block text-sm font-medium text-slate-700">Email</label>
@@ -227,7 +227,7 @@ const Signup = () => {
 
         {/* Show Google signup only on step 1 */}
         {step === 1 && (
-          <button 
+          <button
             onClick={() => handleGoogleSignup()}
             disabled={googleLoading}
             className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-slate-200 rounded-md hover:bg-slate-50 transition-colors mt-6 mb-8 text-sm font-medium text-slate-700 shadow-sm disabled:opacity-70"
