@@ -52,7 +52,7 @@ router.post('/send-otp', async (req, res) => {
 
     // Send email via Resend
     const mailOptions = {
-      from: process.env.EMAIL_USER || 'onboarding@resend.dev',
+      from: 'Whiteboard <onboarding@resend.dev>',
       to: [email],
       subject: 'Your Whiteboard Signup OTP',
       html: `<h2>Welcome to Whiteboard!</h2><p>Your OTP for signup is: <strong>${otpCode}</strong></p><p>This code will expire in 5 minutes.</p>`,
@@ -308,7 +308,7 @@ router.post('/reset-password/send-otp', async (req, res) => {
 
     // Send email via Resend
     const mailOptions = {
-      from: process.env.EMAIL_USER || 'onboarding@resend.dev',
+      from: 'Whiteboard <onboarding@resend.dev>',
       to: [email],
       subject: 'Your Whiteboard Password Reset OTP',
       html: `<h2>Password Reset</h2><p>Your OTP for password reset is: <strong>${otpCode}</strong></p><p>This code will expire in 5 minutes.</p>`,
