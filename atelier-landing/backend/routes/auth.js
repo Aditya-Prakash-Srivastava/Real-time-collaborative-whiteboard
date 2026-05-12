@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 const { z } = require('zod');
 const User = require('../models/User');
 const OTP = require('../models/OTP');
@@ -22,14 +22,8 @@ const passwordSchema = z.object({
   newPassword: z.string().min(6, 'New password must be at least 6 characters')
 });
 
-// Configure Nodemailer transporter
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+// Configure Resend client
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // 1. Send OTP Route
 router.post('/send-otp', async (req, res) => {
@@ -56,17 +50,18 @@ router.post('/send-otp', async (req, res) => {
     const newOtp = new OTP({ email, otp: otpCode });
     await newOtp.save();
 
-    // Send email via Nodemailer
+    // Send email via Resend
     const mailOptions = {
-      from: process.env.EMAIL_USER,
-      to: email,
+      from: process.env.EMAIL_USER || 'onboarding@resend.dev',
+      to: [email],
       subject: 'Your Whiteboard Signup OTP',
       html: `<h2>Welcome to Whiteboard!</h2><p>Your OTP for signup is: <strong>${otpCode}</strong></p><p>This code will expire in 5 minutes.</p>`,
     };
 
     // We wrap this in a try-catch to provide a helpful error if email creds are missing
     try {
-      await transporter.sendMail(mailOptions);
+      const { data, error } = await resend.emails.send(mailOptions);
+      if (error) throw error;
       console.log(`OTP sent to ${email}: ${otpCode}`);
       res.status(200).json({ message: 'OTP sent successfully' });
     } catch (emailError) {
@@ -311,16 +306,17 @@ router.post('/reset-password/send-otp', async (req, res) => {
     const newOtp = new OTP({ email, otp: otpCode });
     await newOtp.save();
 
-    // Send email
+    // Send email via Resend
     const mailOptions = {
-      from: process.env.EMAIL_USER,
-      to: email,
+      from: process.env.EMAIL_USER || 'onboarding@resend.dev',
+      to: [email],
       subject: 'Your Whiteboard Password Reset OTP',
       html: `<h2>Password Reset</h2><p>Your OTP for password reset is: <strong>${otpCode}</strong></p><p>This code will expire in 5 minutes.</p>`,
     };
 
     try {
-      await transporter.sendMail(mailOptions);
+      const { data, error } = await resend.emails.send(mailOptions);
+      if (error) throw error;
       console.log(`[Reset] OTP sent to ${email}: ${otpCode}`);
       res.status(200).json({ message: 'OTP sent successfully' });
     } catch (emailError) {
