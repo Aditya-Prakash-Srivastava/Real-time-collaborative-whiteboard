@@ -42,7 +42,7 @@ const Login = () => {
         const userInfo = await userInfoRes.json();
 
         // Send to our backend
-        const res = await fetch('${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/google', {
+        const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/google`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ credential: tokenResponse.access_token, email: userInfo.email }),
@@ -74,7 +74,7 @@ const Login = () => {
 
     setLoading(true);
     try {
-      const res = await fetch('${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/login', {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
@@ -105,7 +105,7 @@ const Login = () => {
 
     setResetLoading(true);
     try {
-      const res = await fetch('${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/reset-password/send-otp', {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/reset-password/send-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
@@ -133,7 +133,7 @@ const Login = () => {
     try {
       // We verify OTP by trying to reset with a dummy call first — or we can just move to step 3
       // For better UX, let's verify OTP locally by calling verify-otp route
-      const res = await fetch('${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/verify-otp', {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/verify-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, otp: resetOtp })
@@ -161,7 +161,7 @@ const Login = () => {
 
     setResetLoading(true);
     try {
-      const res = await fetch('${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/reset-password/verify', {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/reset-password/verify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, otp: resetOtp, newPassword: resetNewPassword })

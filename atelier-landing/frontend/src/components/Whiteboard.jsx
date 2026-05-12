@@ -412,7 +412,7 @@ const Whiteboard = () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/change-password', {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/change-password`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',

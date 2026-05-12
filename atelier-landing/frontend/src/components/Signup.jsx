@@ -27,7 +27,7 @@ const Signup = () => {
         const userInfo = await userInfoRes.json();
 
         // Send to our backend
-        const res = await fetch('${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/google', {
+        const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/google`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ credential: tokenResponse.access_token, email: userInfo.email }),
@@ -59,7 +59,7 @@ const Signup = () => {
     
     setLoading(true);
     try {
-      const res = await fetch('${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/send-otp', {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/send-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
@@ -85,7 +85,7 @@ const Signup = () => {
 
     setLoading(true);
     try {
-      const res = await fetch('${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/verify-otp', {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/verify-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, otp })
@@ -111,7 +111,7 @@ const Signup = () => {
 
     setLoading(true);
     try {
-      const res = await fetch('${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/signup', {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
