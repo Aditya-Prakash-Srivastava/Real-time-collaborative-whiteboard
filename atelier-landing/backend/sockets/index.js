@@ -1,3 +1,12 @@
+/**
+ * Socket.IO Implementation and Real-Time Synchronization Engine
+ * 
+ * Architecture Overview:
+ * 1. Manages real-time drawing state (board:update), user presence (room:users), and cursor tracking (pointer:update).
+ * 2. Utilizes a Redis Adapter (optional) for horizontal scaling if deployed across multiple instances.
+ * 3. Implements debounced MongoDB persistence to save board snapshots without overwhelming the database.
+ * 4. Implements Role-Based Access Control (RBAC) to allow room creators to kick participants.
+ */
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const { createClient } = require('redis');
@@ -6,6 +15,8 @@ const BoardSnapshot = require('../models/BoardSnapshot');
 
 // Phase 5: Presence & Cursors state
 const roomUsers = new Map(); // roomId -> Map(socketId -> { id, username, color })
+const roomOwners = new Map(); // roomId -> ownerEmail
+
 const CURSOR_COLORS = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#F4D03F', '#D4A5A5', '#9B59B6', '#3498DB', '#E67E22', '#2ECC71'];
 
 const getRoomUsersArray = (roomId) => {
@@ -51,7 +62,7 @@ setInterval(async () => {
 const initSocketServer = async (httpServer) => {
   const io = new Server(httpServer, {
     cors: {
-      origin: "http://localhost:5173", // Frontend Vite default port
+      origin: "*", // Allow all origins for local development flexibility (e.g. 127.0.0.1, localhost, LAN IPs)
       methods: ["GET", "POST"]
     },
     // Phase 10: Enable Payload Compression to save bandwidth on large boards
@@ -104,8 +115,10 @@ const initSocketServer = async (httpServer) => {
     console.log(`[Socket] User connected: ${socket.user.email} (ID: ${socket.id})`);
 
     // STEP 7: Implement room joining system.
-    socket.on('room:join', async (roomId) => {
-      if (!roomId) return;
+    socket.on('room:join', async (rawRoomId) => {
+      if (!rawRoomId) return;
+      
+      const roomId = String(rawRoomId).trim();
       
       // Leave previous rooms if any (excluding default socket.id room)
       Array.from(socket.rooms).forEach(room => {
@@ -113,7 +126,10 @@ const initSocketServer = async (httpServer) => {
           socket.leave(room);
           if (roomUsers.has(room)) {
             roomUsers.get(room).delete(socket.id);
-            io.to(room).emit('room:users', getRoomUsersArray(room));
+            io.to(room).emit('room:users', {
+              users: getRoomUsersArray(room),
+              ownerEmail: roomOwners.get(room)
+            });
           }
         }
       });
@@ -122,6 +138,42 @@ const initSocketServer = async (httpServer) => {
       socket.currentRoom = roomId; // Phase 9: Track current room for faster disconnect cleanup
       console.log(`[Socket] User ${socket.user.email} joined room: ${roomId}`);
       
+      // --- Atomic Ownership & State Fetching ---
+      let ownerEmail = null;
+      let elements = null;
+      let version = 0;
+
+      try {
+        // Initialize room if it doesn't exist, assigning the first person as owner
+        const result = await BoardSnapshot.findOneAndUpdate(
+          { roomId },
+          { $setOnInsert: { elements: [], version: 0, ownerEmail: socket.user.email } },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+        
+        if (result) {
+          ownerEmail = result.ownerEmail;
+          roomOwners.set(roomId, ownerEmail);
+          
+          // Override elements from pending saves if they exist in memory
+          if (pendingSaves.has(roomId)) {
+            const pending = pendingSaves.get(roomId);
+            elements = pending.elements;
+            version = pending.version;
+          } else {
+            elements = result.elements;
+            version = result.version;
+          }
+        }
+      } catch (err) {
+        console.error(`[MongoDB] Error initializing room ${roomId}:`, err);
+        // Fallback to memory if DB fails
+        if (!roomOwners.has(roomId)) {
+          roomOwners.set(roomId, socket.user.email);
+        }
+        ownerEmail = roomOwners.get(roomId);
+      }
+
       // Phase 5: Add user to tracking map
       if (!roomUsers.has(roomId)) {
         roomUsers.set(roomId, new Map());
@@ -136,36 +188,19 @@ const initSocketServer = async (httpServer) => {
         color
       });
 
-      // Broadcast updated user list to everyone in the room
-      io.to(roomId).emit('room:users', getRoomUsersArray(roomId));
+      // Broadcast updated user list with owner info
+      io.to(roomId).emit('room:users', {
+        users: getRoomUsersArray(roomId),
+        ownerEmail
+      });
 
       // STEP 15: Send latest snapshot to joining user
-      try {
-        // Also check pending saves in memory in case it hasn't flushed yet
-        let elements = null;
-        let version = 0;
-        
-        if (pendingSaves.has(roomId)) {
-          const pending = pendingSaves.get(roomId);
-          elements = pending.elements;
-          version = pending.version;
-        } else {
-          const snapshot = await BoardSnapshot.findOne({ roomId });
-          if (snapshot) {
-            elements = snapshot.elements;
-            version = snapshot.version;
-          }
-        }
-
-        if (elements) {
-          socket.emit('initial:state', {
-            roomId,
-            elements,
-            version
-          });
-        }
-      } catch (err) {
-        console.error(`[MongoDB] Error fetching snapshot for room ${roomId}:`, err);
+      if (elements && elements.length > 0) {
+        socket.emit('initial:state', {
+          roomId,
+          elements,
+          version
+        });
       }
     });
 
@@ -223,6 +258,37 @@ const initSocketServer = async (httpServer) => {
       });
     });
 
+    // RBAC: Handle Kick Event
+    socket.on('room:kick', ({ roomId, userIdToKick }) => {
+      if (!roomId || !userIdToKick) return;
+
+      // Verify ownership
+      if (roomOwners.get(roomId) !== socket.user.email) {
+        return; // Unauthorized
+      }
+
+      // Ensure the target user is in the room
+      const usersMap = roomUsers.get(roomId);
+      if (usersMap && usersMap.has(userIdToKick)) {
+        // Find the target socket and forcefully remove them
+        const targetSocket = io.sockets.sockets.get(userIdToKick);
+        if (targetSocket) {
+          targetSocket.emit('room:kicked');
+          targetSocket.leave(roomId);
+          targetSocket.currentRoom = null;
+        }
+
+        // Clean up from tracking map and broadcast update
+        usersMap.delete(userIdToKick);
+        io.to(roomId).emit('room:users', {
+          users: getRoomUsersArray(roomId),
+          ownerEmail: roomOwners.get(roomId)
+        });
+        
+        console.log(`[Socket] User ${socket.user.email} kicked ${userIdToKick} from room ${roomId}`);
+      }
+    });
+
     socket.on('disconnect', () => {
       console.log(`[Socket] User disconnected: ${socket.user.email}`);
       
@@ -235,9 +301,13 @@ const initSocketServer = async (httpServer) => {
         if (usersMap.size === 0) {
           // Clean up empty room to prevent memory leak
           roomUsers.delete(roomId);
-          console.log(`[Socket] Room ${roomId} is empty. Deleted from tracking map.`);
+          roomOwners.delete(roomId); // Prevent memory leak, will reload from MongoDB
+          console.log(`[Socket] Room ${roomId} is empty. Deleted from tracking maps.`);
         } else {
-          io.to(roomId).emit('room:users', getRoomUsersArray(roomId));
+          io.to(roomId).emit('room:users', {
+            users: getRoomUsersArray(roomId),
+            ownerEmail: roomOwners.get(roomId)
+          });
         }
       }
     });

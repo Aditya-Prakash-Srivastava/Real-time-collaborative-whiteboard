@@ -8,6 +8,14 @@ import Login from './components/Login';
 import Signup from './components/Signup';
 import Whiteboard from './components/Whiteboard';
 
+/**
+ * Root Application Component
+ * 
+ * Architecture Overview:
+ * 1. Handles client-side routing using a custom hook/event listener (popstate) to avoid heavy dependencies like react-router if not needed.
+ * 2. Implements Authentication Guards: Protects the `/whiteboard` route by checking for a valid JWT token.
+ * 3. Preserves URL parameters (e.g. `?room=123`) during redirects to ensure seamless invitation links.
+ */
 function App() {
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
 
@@ -17,6 +25,16 @@ function App() {
     };
 
     window.addEventListener('popstate', handleLocationChange);
+    
+    // Auto-redirect to whiteboard if root URL has a room code
+    if (window.location.pathname === '/') {
+      const params = new URLSearchParams(window.location.search);
+      const room = params.get('room');
+      if (room) {
+        window.location.href = `/whiteboard?room=${room}`;
+      }
+    }
+    
     return () => window.removeEventListener('popstate', handleLocationChange);
   }, []);
 
@@ -30,8 +48,14 @@ function App() {
 
   if (currentPath === '/whiteboard') {
     const token = localStorage.getItem('token');
-    if (!token) {
-      window.location.href = '/#cta';
+    if (!token || token === 'undefined' || token === 'null') {
+      const params = new URLSearchParams(window.location.search);
+      const room = params.get('room');
+      if (room) {
+        window.location.href = `/login?room=${room}`;
+      } else {
+        window.location.href = '/login';
+      }
       return null;
     }
     return <Whiteboard />;

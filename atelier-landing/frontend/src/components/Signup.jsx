@@ -27,7 +27,7 @@ const Signup = () => {
         const userInfo = await userInfoRes.json();
 
         // Send to our backend
-        const res = await fetch('http://localhost:5000/api/auth/google', {
+        const res = await fetch('${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/google', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ credential: tokenResponse.access_token, email: userInfo.email }),
@@ -39,7 +39,9 @@ const Signup = () => {
         localStorage.setItem('token', data.token);
         setSuccess('Account created with Google!');
         setTimeout(() => {
-          window.location.href = '/whiteboard';
+          const searchParams = new URLSearchParams(window.location.search);
+          const room = searchParams.get('room');
+          window.location.href = room ? `/whiteboard?room=${room}` : '/whiteboard';
         }, 1000);
       } catch (err) {
         setError(err.message);
@@ -57,7 +59,7 @@ const Signup = () => {
     
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:5000/api/auth/send-otp', {
+      const res = await fetch('${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/send-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
@@ -83,7 +85,7 @@ const Signup = () => {
 
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:5000/api/auth/verify-otp', {
+      const res = await fetch('${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, otp })
@@ -109,7 +111,7 @@ const Signup = () => {
 
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:5000/api/auth/signup', {
+      const res = await fetch('${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
@@ -124,7 +126,9 @@ const Signup = () => {
       
       // Redirect or update app state here
       setTimeout(() => {
-        window.location.href = '/whiteboard';
+        const searchParams = new URLSearchParams(window.location.search);
+        const room = searchParams.get('room');
+        window.location.href = room ? `/whiteboard?room=${room}` : '/whiteboard';
       }, 1500);
 
     } catch (err) {
@@ -246,7 +250,7 @@ const Signup = () => {
         <div className="mt-8 text-center space-y-3">
           <p className="text-sm text-slate-600">
             Already have account?{' '}
-            <a href="/login" className="text-brand-blue hover:text-brand-dark font-medium transition-colors">
+            <a href={`/login${window.location.search}`} className="text-brand-blue hover:text-brand-dark font-medium transition-colors">
               Sign in
             </a>
           </p>

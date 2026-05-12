@@ -1,13 +1,28 @@
 import { io } from 'socket.io-client';
 
-const SOCKET_URL = 'http://localhost:5000';
+/**
+ * The base URL for the backend Socket.IO server.
+ * Uses environment variables for deployment (Vercel) or fallbacks to localhost.
+ */
+const SOCKET_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
+/**
+ * SocketService Singleton Class
+ * Manages the WebSocket lifecycle, ensuring only one active connection 
+ * exists across the React application to prevent memory leaks and duplicate events.
+ */
 class SocketService {
   constructor() {
     this.socket = null;
   }
 
-  // STEP 5: Setup Socket.IO client singleton
+  /**
+   * Initializes the socket connection if one doesn't exist.
+   * Passes the JWT token in the auth payload for backend validation.
+   * 
+   * @param {string} token - The JWT authentication token.
+   * @returns {import('socket.io-client').Socket} The initialized socket instance.
+   */
   connect(token) {
     if (this.socket) return this.socket;
 

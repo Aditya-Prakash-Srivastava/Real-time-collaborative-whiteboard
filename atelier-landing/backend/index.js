@@ -11,6 +11,11 @@ const app = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
 
+/**
+ * Application Entry Point
+ * Initializes the Express server, connects to MongoDB, sets up REST API routes,
+ * configures rate limiting, and bootstraps the Socket.IO real-time server.
+ */
 const startServer = async () => {
   try {
     // Connect to MongoDB

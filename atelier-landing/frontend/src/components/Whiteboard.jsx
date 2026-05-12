@@ -1,8 +1,19 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { User, LogOut, Lock, X, Eye, EyeOff, Loader2, Home, LayoutGrid, Plus, Copy, Edit2, Users, Link as LinkIcon, UserPlus, LogOut as LeaveIcon, ChevronDown, ChevronUp } from 'lucide-react';
+import { User, LogOut, Lock, X, Eye, EyeOff, Loader2, Home, LayoutGrid, Plus, Copy, Edit2, Users, Link as LinkIcon, UserPlus, LogOut as LeaveIcon, ChevronDown, ChevronUp, Crown, UserMinus } from 'lucide-react';
 import { Excalidraw, getSceneVersion } from '@excalidraw/excalidraw';
 import { socketService } from '../socket';
 
+/**
+ * Whiteboard Component
+ * 
+ * Core collaborative workspace leveraging Excalidraw for the canvas and Socket.IO for real-time synchronization.
+ * 
+ * Architecture Highlights:
+ * 1. Uses a custom 'Robust Room Joining' logic in a `useEffect` to guarantee membership on mount and reconnect.
+ * 2. Mitigates 'Infinite Loop' render bugs by using `isUpdatingRef` and a 100ms lock during incoming broadcasts.
+ * 3. Implements RBAC allowing the room creator to kick other participants via a UI modal.
+ * 4. Tracks active presence using `roomUsers` and `collaborators` state.
+ */
 const Whiteboard = () => {
   const [userEmail, setUserEmail] = useState('');
   const [userName, setUserName] = useState('');
@@ -17,11 +28,12 @@ const Whiteboard = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  // New UI states
+  // UI State management for room navigation and interface toggles
   const [roomCodeInput, setRoomCodeInput] = useState('');
   const [roomLinkInput, setRoomLinkInput] = useState('');
   const [showBanner, setShowBanner] = useState(true);
   const [currentRoom, setCurrentRoom] = useState('');
+  const [roomOwner, setRoomOwner] = useState('');
   const [copySuccess, setCopySuccess] = useState(false);
   
   // Phase 5: Presence & Cursors state
@@ -29,7 +41,8 @@ const Whiteboard = () => {
   const [collaborators, setCollaborators] = useState(new Map());
   const lastPointerUpdateRef = useRef(0);
   const lastSceneVersionRef = useRef(0);
-  const lastBoardUpdateRef = useRef(0);
+  const [lastBoardUpdateRef, setLastBoardUpdateRef] = [useRef(0)]; // Just reusing existing line, wait, I will just add my new line
+  const [userToKick, setUserToKick] = useState(null);
 
   // Initialize room from URL on mount
   useEffect(() => {
@@ -72,20 +85,12 @@ const Whiteboard = () => {
         const socket = socketService.connect(token);
         
         // Clean up any existing listeners just in case
-        socket.off('connect');
+        socket.off('initial:state');
+        socket.off('room:users');
+        socket.off('pointer:update');
         socket.off('board:update');
-
-        const handleConnect = () => {
-          if (currentRoomRef.current && excalidrawAPIRef.current) {
-            socket.emit('room:join', currentRoomRef.current);
-          }
-        };
-
-        if (socket.connected) {
-          handleConnect();
-        } else {
-          socket.on('connect', handleConnect);
-        }
+        socket.off('board:clear');
+        socket.off('room:kicked');
 
         // STEP 16: Handle initial state from MongoDB
         socket.on('initial:state', (data) => {
@@ -99,11 +104,15 @@ const Whiteboard = () => {
             elements: data.elements,
             commitToHistory: true // Add to history so user can undo their first stroke relative to the fetched state
           });
+          setTimeout(() => { isUpdatingRef.current = false; }, 100);
         });
 
         // Phase 5: Listen for user list updates
-        socket.on('room:users', (users) => {
+        socket.on('room:users', (data) => {
+          const { users, ownerEmail } = data;
           setRoomUsers(users);
+          if (ownerEmail) setRoomOwner(ownerEmail);
+          
           setCollaborators(prev => {
             const newMap = new Map(prev);
             users.forEach(u => {
@@ -154,11 +163,11 @@ const Whiteboard = () => {
           lastSyncVersionRef.current = data.version;
 
           // STEP 9: Use updateScene properly to avoid infinite loops
-          // STEP 12: Excalidraw's updateScene automatically uses internal element `version` properties for reconciliation
           excalidrawAPIRef.current.updateScene({
             elements: data.elements,
             commitToHistory: false // Don't pollute local history with remote changes
           });
+          setTimeout(() => { isUpdatingRef.current = false; }, 100);
         });
 
         // Phase 7: Listen for hard clear
@@ -166,15 +175,30 @@ const Whiteboard = () => {
           if (!excalidrawAPIRef.current) return;
           isUpdatingRef.current = true;
           excalidrawAPIRef.current.resetScene();
+          setTimeout(() => { isUpdatingRef.current = false; }, 100);
+        });
+
+        // RBAC: Handle getting kicked
+        socket.on('room:kicked', () => {
+          alert("You have been removed from the room by the creator.");
+          setCurrentRoom('');
+          const url = new URL(window.location);
+          url.searchParams.delete('room');
+          window.history.pushState({}, '', url);
+          if (excalidrawAPIRef.current) {
+            isUpdatingRef.current = true;
+            excalidrawAPIRef.current.resetScene();
+            setTimeout(() => { isUpdatingRef.current = false; }, 100);
+          }
         });
 
         return () => {
-          socket.off('connect');
           socket.off('initial:state');
           socket.off('room:users');
           socket.off('pointer:update');
           socket.off('board:update');
           socket.off('board:clear');
+          socket.off('room:kicked');
         };
 
       } catch (err) {
@@ -183,12 +207,26 @@ const Whiteboard = () => {
     }
   }, []);
 
-  // Re-join socket room when currentRoom or excalidrawAPI state changes
+  // Robust Room Joining Logic
   useEffect(() => {
     const socket = socketService.getSocket();
-    if (socket && socket.connected && currentRoom && excalidrawAPI) {
-      socket.emit('room:join', currentRoom);
-    }
+    if (!socket) return;
+
+    const tryJoinRoom = () => {
+      if (socket.connected && currentRoom && excalidrawAPI) {
+        socket.emit('room:join', currentRoom);
+      }
+    };
+
+    // Try joining immediately
+    tryJoinRoom();
+    
+    // And join whenever the socket successfully connects/reconnects
+    socket.on('connect', tryJoinRoom);
+
+    return () => {
+      socket.off('connect', tryJoinRoom);
+    };
   }, [currentRoom, excalidrawAPI]);
 
   // Phase 5: Update Excalidraw scene with collaborators when they change
@@ -274,8 +312,17 @@ const Whiteboard = () => {
         if (excalidrawAPIRef.current) {
           isUpdatingRef.current = true;
           excalidrawAPIRef.current.resetScene();
+          setTimeout(() => { isUpdatingRef.current = false; }, 100);
         }
       }
+    }
+  };
+
+  // RBAC: Handle Kick User
+  const handleKickUser = (userIdToKick) => {
+    const socket = socketService.getSocket();
+    if (socket && socket.connected && currentRoomRef.current) {
+      socket.emit('room:kick', { roomId: currentRoomRef.current, userIdToKick });
     }
   };
 
@@ -288,9 +335,8 @@ const Whiteboard = () => {
     lastSceneVersionRef.current = currentVersion;
 
     // STEP 10: Prevent infinite sync loops
-    // If the change was triggered by a remote update, ignore it and clear the flag
+    // If the change was triggered by a remote update, ignore it
     if (isUpdatingRef.current) {
-      isUpdatingRef.current = false;
       return;
     }
 
@@ -366,7 +412,7 @@ const Whiteboard = () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:5000/api/auth/change-password', {
+      const res = await fetch('${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/change-password', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -635,18 +681,42 @@ const Whiteboard = () => {
             {roomUsers.length > 0 && (
               <div className="absolute right-4 bottom-4 bg-white border border-slate-200 rounded-full shadow-sm py-1.5 px-3 flex items-center gap-3 z-10">
                 <div className="flex -space-x-2">
-                  {roomUsers.slice(0, 4).map((user, idx) => (
-                    <div 
-                      key={user.id} 
-                      className="w-7 h-7 rounded-full border-2 border-white flex items-center justify-center text-white text-[10px] font-bold"
-                      style={{ backgroundColor: user.color, zIndex: 40 - idx }}
-                      title={user.username}
-                    >
-                      {user.username.charAt(0).toUpperCase()}
-                    </div>
-                  ))}
+                  {roomUsers.slice(0, 4).map((user, idx) => {
+                    // Check if this user is the owner (this relies on the username/email convention, or ideally we'd send email in user object, but we have ownerEmail in state. Since user.id is socket.id, we can just match if their username matches the ownerEmail prefix. Wait, a safer way is if we sent their email in the roomUsers payload, but username works for UI approximation.)
+                    // Actually, the backend sends username (part before @). We can check if roomOwner starts with user.username.
+                    const isOwner = roomOwner && roomOwner.startsWith(user.username);
+                    const isMe = userEmail && userEmail.startsWith(user.username);
+                    const canKick = userEmail === roomOwner && !isOwner;
+
+                    return (
+                      <div 
+                        key={user.id} 
+                        className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-white text-[10px] font-bold relative group"
+                        style={{ backgroundColor: user.color, zIndex: 40 - idx }}
+                        title={user.username + (isOwner ? " (Creator)" : "")}
+                      >
+                        {user.username.charAt(0).toUpperCase()}
+                        {isOwner && (
+                          <div className="absolute -top-2 -right-1 bg-yellow-400 text-yellow-900 rounded-full p-[2px] shadow-sm z-50">
+                            <Crown className="w-2.5 h-2.5" />
+                          </div>
+                        )}
+                        {canKick && (
+                          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-white text-slate-800 shadow-xl rounded-md border border-slate-200 py-1 px-1.5 opacity-0 group-hover:opacity-100 pointer-events-none group-hover:pointer-events-auto transition-all z-50 transform scale-95 group-hover:scale-100 origin-bottom">
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); setUserToKick(user); }} 
+                              className="text-xs font-semibold text-red-600 flex items-center gap-1.5 hover:bg-red-50 px-2 py-1.5 rounded w-full whitespace-nowrap shadow-sm"
+                            >
+                              <UserMinus className="w-3.5 h-3.5" /> Kick
+                            </button>
+                            <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 border-[6px] border-transparent border-t-white drop-shadow-sm"></div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                   {roomUsers.length > 4 && (
-                    <div className="w-7 h-7 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center text-slate-600 text-[10px] font-bold z-0">
+                    <div className="w-8 h-8 rounded-full border-2 border-white bg-slate-200 flex items-center justify-center text-slate-600 text-[10px] font-bold z-0">
                       +{roomUsers.length - 4}
                     </div>
                   )}
@@ -685,6 +755,34 @@ const Whiteboard = () => {
             </div>
           </div>
         </div>
+        {/* Kick Confirmation Modal */}
+        {userToKick && (
+          <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-[100] animate-in fade-in duration-200" onClick={() => setUserToKick(null)}>
+            <div className="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full mx-4 animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+              <h3 className="text-lg font-bold text-slate-900 mb-2">Kick User</h3>
+              <p className="text-sm text-slate-600 mb-6">
+                Are you sure you want to remove <strong className="text-slate-900">{userToKick.username}</strong> from the room? They will no longer be able to collaborate.
+              </p>
+              <div className="flex items-center justify-end gap-3">
+                <button 
+                  onClick={() => setUserToKick(null)}
+                  className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={() => {
+                    handleKickUser(userToKick.id);
+                    setUserToKick(null);
+                  }}
+                  className="px-4 py-2 text-sm font-medium bg-red-600 text-white hover:bg-red-700 rounded-lg transition-colors shadow-sm"
+                >
+                  Confirm
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

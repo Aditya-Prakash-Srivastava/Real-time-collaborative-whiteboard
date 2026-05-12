@@ -20,6 +20,10 @@ const boardSnapshotSchema = new mongoose.Schema({
   lastUpdatedBy: {
     type: String, // email or socket ID
     required: false
+  },
+  ownerEmail: {
+    type: String, // email of the user who created the room
+    required: false
   }
 }, { timestamps: true });
 

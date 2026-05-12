@@ -1,7 +1,7 @@
 {
-  "name": "atelier-backend",
+  "name": "whiteboard-backend",
   "version": "1.0.0",
-  "description": "Backend for Atelier Landing Page",
+  "description": "Backend for Whiteboard Landing Page",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"

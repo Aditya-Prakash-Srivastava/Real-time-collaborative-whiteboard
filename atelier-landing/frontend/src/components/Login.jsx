@@ -42,7 +42,7 @@ const Login = () => {
         const userInfo = await userInfoRes.json();
 
         // Send to our backend
-        const res = await fetch('http://localhost:5000/api/auth/google', {
+        const res = await fetch('${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/google', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ credential: tokenResponse.access_token, email: userInfo.email }),
@@ -52,7 +52,9 @@ const Login = () => {
         if (!res.ok) throw new Error(data.error || 'Google login failed');
 
         localStorage.setItem('token', data.token);
-        window.location.href = '/whiteboard';
+        const searchParams = new URLSearchParams(window.location.search);
+        const room = searchParams.get('room');
+        window.location.href = room ? `/whiteboard?room=${room}` : '/whiteboard';
       } catch (err) {
         setError(err.message);
       } finally {
@@ -72,7 +74,7 @@ const Login = () => {
 
     setLoading(true);
     try {
-      const res = await fetch('http://localhost:5000/api/auth/login', {
+      const res = await fetch('${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
@@ -85,7 +87,9 @@ const Login = () => {
 
       // Save token and redirect
       localStorage.setItem('token', data.token);
-      window.location.href = '/whiteboard';
+      const searchParams = new URLSearchParams(window.location.search);
+      const room = searchParams.get('room');
+      window.location.href = room ? `/whiteboard?room=${room}` : '/whiteboard';
     } catch (err) {
       setError(err.message);
     } finally {
@@ -101,7 +105,7 @@ const Login = () => {
 
     setResetLoading(true);
     try {
-      const res = await fetch('http://localhost:5000/api/auth/reset-password/send-otp', {
+      const res = await fetch('${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/reset-password/send-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
@@ -129,7 +133,7 @@ const Login = () => {
     try {
       // We verify OTP by trying to reset with a dummy call first — or we can just move to step 3
       // For better UX, let's verify OTP locally by calling verify-otp route
-      const res = await fetch('http://localhost:5000/api/auth/verify-otp', {
+      const res = await fetch('${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, otp: resetOtp })
@@ -157,7 +161,7 @@ const Login = () => {
 
     setResetLoading(true);
     try {
-      const res = await fetch('http://localhost:5000/api/auth/reset-password/verify', {
+      const res = await fetch('${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/auth/reset-password/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, otp: resetOtp, newPassword: resetNewPassword })
@@ -300,7 +304,7 @@ const Login = () => {
             <div className="mt-8 text-center space-y-3">
               <p className="text-sm text-slate-600">
                 Don't have an account yet?{' '}
-                <a href="/signup" className="text-brand-blue hover:text-brand-dark font-medium transition-colors">
+                <a href={`/signup${window.location.search}`} className="text-brand-blue hover:text-brand-dark font-medium transition-colors">
                   Sign up for free
                 </a>
               </p>
